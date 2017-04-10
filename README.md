@@ -1,1 +1,1 @@
-# sodibus-go
+# SODIBus Go Client Library

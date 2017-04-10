@@ -11,11 +11,12 @@ It is generated from these files:
 
 It has these top-level messages:
 	PacketInitialization
-	PacketProducerSend
-	PacketProducerRecv
-	PacketConsumerRecv
-	PacketConsumerSend
-	FullId
+	PacketReady
+	PacketCallerSend
+	PacketCallerRecv
+	PacketCalleeRecv
+	PacketCalleeSend
+	InvocationId
 	Invocation
 */
 package packet
@@ -38,9 +39,9 @@ const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 // initialization packet
 //
 // client will send a Init once connection established.
-// client has to declare it's type, either a 'producer', who sends invocations, or a 'consumer', who execute invocations and returns values.
+// client has to declare it's mode, either a 'caller', who sends invocations, or a 'callee', who execute invocations and returns values.
 type PacketInitialization struct {
-	Type     ClientType `protobuf:"varint,1,opt,name=type,enum=sodibus.ClientType" json:"type,omitempty"`
+	Mode     ClientMode `protobuf:"varint,1,opt,name=mode,enum=sodibus.ClientMode" json:"mode,omitempty"`
 	Provides []string   `protobuf:"bytes,2,rep,name=provides" json:"provides,omitempty"`
 }
 
@@ -49,11 +50,11 @@ func (m *PacketInitialization) String() string            { return proto.Compact
 func (*PacketInitialization) ProtoMessage()               {}
 func (*PacketInitialization) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
 
-func (m *PacketInitialization) GetType() ClientType {
+func (m *PacketInitialization) GetMode() ClientMode {
 	if m != nil {
-		return m.Type
+		return m.Mode
 	}
-	return ClientType_PRODUCER
+	return ClientMode_CALLER
 }
 
 func (m *PacketInitialization) GetProvides() []string {
@@ -63,27 +64,62 @@ func (m *PacketInitialization) GetProvides() []string {
 	return nil
 }
 
+// ready packet
+//
+// SODIBus will send a PacketReady after initialization ready
+type PacketReady struct {
+	Mode     ClientMode `protobuf:"varint,1,opt,name=mode,enum=sodibus.ClientMode" json:"mode,omitempty"`
+	NodeId   uint64     `protobuf:"varint,2,opt,name=node_id,json=nodeId" json:"node_id,omitempty"`
+	ClientId uint64     `protobuf:"varint,3,opt,name=client_id,json=clientId" json:"client_id,omitempty"`
+}
+
+func (m *PacketReady) Reset()                    { *m = PacketReady{} }
+func (m *PacketReady) String() string            { return proto.CompactTextString(m) }
+func (*PacketReady) ProtoMessage()               {}
+func (*PacketReady) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+
+func (m *PacketReady) GetMode() ClientMode {
+	if m != nil {
+		return m.Mode
+	}
+	return ClientMode_CALLER
+}
+
+func (m *PacketReady) GetNodeId() uint64 {
+	if m != nil {
+		return m.NodeId
+	}
+	return 0
+}
+
+func (m *PacketReady) GetClientId() uint64 {
+	if m != nil {
+		return m.ClientId
+	}
+	return 0
+}
+
 // invocation packet
 //
-// producer client send invocation packet when it wants to invoke a service
-type PacketProducerSend struct {
+// caller client send invocation packet when it wants to invoke a service
+type PacketCallerSend struct {
 	Id         uint64      `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
 	Invocation *Invocation `protobuf:"bytes,2,opt,name=invocation" json:"invocation,omitempty"`
 }
 
-func (m *PacketProducerSend) Reset()                    { *m = PacketProducerSend{} }
-func (m *PacketProducerSend) String() string            { return proto.CompactTextString(m) }
-func (*PacketProducerSend) ProtoMessage()               {}
-func (*PacketProducerSend) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+func (m *PacketCallerSend) Reset()                    { *m = PacketCallerSend{} }
+func (m *PacketCallerSend) String() string            { return proto.CompactTextString(m) }
+func (*PacketCallerSend) ProtoMessage()               {}
+func (*PacketCallerSend) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
 
-func (m *PacketProducerSend) GetId() uint64 {
+func (m *PacketCallerSend) GetId() uint64 {
 	if m != nil {
 		return m.Id
 	}
 	return 0
 }
 
-func (m *PacketProducerSend) GetInvocation() *Invocation {
+func (m *PacketCallerSend) GetInvocation() *Invocation {
 	if m != nil {
 		return m.Invocation
 	}
@@ -92,83 +128,83 @@ func (m *PacketProducerSend) GetInvocation() *Invocation {
 
 // invocation result packet
 //
-// producer client send receives result packet when invocation finished
-type PacketProducerRecv struct {
+// caller client send receives result packet when invocation finished
+type PacketCallerRecv struct {
 	Id     uint64    `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
 	Code   ErrorCode `protobuf:"varint,2,opt,name=code,enum=sodibus.ErrorCode" json:"code,omitempty"`
 	Result string    `protobuf:"bytes,3,opt,name=result" json:"result,omitempty"`
 }
 
-func (m *PacketProducerRecv) Reset()                    { *m = PacketProducerRecv{} }
-func (m *PacketProducerRecv) String() string            { return proto.CompactTextString(m) }
-func (*PacketProducerRecv) ProtoMessage()               {}
-func (*PacketProducerRecv) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
+func (m *PacketCallerRecv) Reset()                    { *m = PacketCallerRecv{} }
+func (m *PacketCallerRecv) String() string            { return proto.CompactTextString(m) }
+func (*PacketCallerRecv) ProtoMessage()               {}
+func (*PacketCallerRecv) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
 
-func (m *PacketProducerRecv) GetId() uint64 {
+func (m *PacketCallerRecv) GetId() uint64 {
 	if m != nil {
 		return m.Id
 	}
 	return 0
 }
 
-func (m *PacketProducerRecv) GetCode() ErrorCode {
+func (m *PacketCallerRecv) GetCode() ErrorCode {
 	if m != nil {
 		return m.Code
 	}
 	return ErrorCode_OK
 }
 
-func (m *PacketProducerRecv) GetResult() string {
+func (m *PacketCallerRecv) GetResult() string {
 	if m != nil {
 		return m.Result
 	}
 	return ""
 }
 
-// invocation recieved by Consumer
-type PacketConsumerRecv struct {
-	Id         *FullId     `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
-	Invocation *Invocation `protobuf:"bytes,2,opt,name=invocation" json:"invocation,omitempty"`
+// invocation recieved by Callee
+type PacketCalleeRecv struct {
+	Id         *InvocationId `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
+	Invocation *Invocation   `protobuf:"bytes,2,opt,name=invocation" json:"invocation,omitempty"`
 }
 
-func (m *PacketConsumerRecv) Reset()                    { *m = PacketConsumerRecv{} }
-func (m *PacketConsumerRecv) String() string            { return proto.CompactTextString(m) }
-func (*PacketConsumerRecv) ProtoMessage()               {}
-func (*PacketConsumerRecv) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
+func (m *PacketCalleeRecv) Reset()                    { *m = PacketCalleeRecv{} }
+func (m *PacketCalleeRecv) String() string            { return proto.CompactTextString(m) }
+func (*PacketCalleeRecv) ProtoMessage()               {}
+func (*PacketCalleeRecv) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
 
-func (m *PacketConsumerRecv) GetId() *FullId {
+func (m *PacketCalleeRecv) GetId() *InvocationId {
 	if m != nil {
 		return m.Id
 	}
 	return nil
 }
 
-func (m *PacketConsumerRecv) GetInvocation() *Invocation {
+func (m *PacketCalleeRecv) GetInvocation() *Invocation {
 	if m != nil {
 		return m.Invocation
 	}
 	return nil
 }
 
-// invocation result sent by Consumer
-type PacketConsumerSend struct {
-	Id     *FullId `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
-	Result string  `protobuf:"bytes,2,opt,name=result" json:"result,omitempty"`
+// invocation result sent by Callee
+type PacketCalleeSend struct {
+	Id     *InvocationId `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
+	Result string        `protobuf:"bytes,2,opt,name=result" json:"result,omitempty"`
 }
 
-func (m *PacketConsumerSend) Reset()                    { *m = PacketConsumerSend{} }
-func (m *PacketConsumerSend) String() string            { return proto.CompactTextString(m) }
-func (*PacketConsumerSend) ProtoMessage()               {}
-func (*PacketConsumerSend) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
+func (m *PacketCalleeSend) Reset()                    { *m = PacketCalleeSend{} }
+func (m *PacketCalleeSend) String() string            { return proto.CompactTextString(m) }
+func (*PacketCalleeSend) ProtoMessage()               {}
+func (*PacketCalleeSend) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
 
-func (m *PacketConsumerSend) GetId() *FullId {
+func (m *PacketCalleeSend) GetId() *InvocationId {
 	if m != nil {
 		return m.Id
 	}
 	return nil
 }
 
-func (m *PacketConsumerSend) GetResult() string {
+func (m *PacketCalleeSend) GetResult() string {
 	if m != nil {
 		return m.Result
 	}
@@ -177,33 +213,36 @@ func (m *PacketConsumerSend) GetResult() string {
 
 func init() {
 	proto.RegisterType((*PacketInitialization)(nil), "sodibus.PacketInitialization")
-	proto.RegisterType((*PacketProducerSend)(nil), "sodibus.PacketProducerSend")
-	proto.RegisterType((*PacketProducerRecv)(nil), "sodibus.PacketProducerRecv")
-	proto.RegisterType((*PacketConsumerRecv)(nil), "sodibus.PacketConsumerRecv")
-	proto.RegisterType((*PacketConsumerSend)(nil), "sodibus.PacketConsumerSend")
+	proto.RegisterType((*PacketReady)(nil), "sodibus.PacketReady")
+	proto.RegisterType((*PacketCallerSend)(nil), "sodibus.PacketCallerSend")
+	proto.RegisterType((*PacketCallerRecv)(nil), "sodibus.PacketCallerRecv")
+	proto.RegisterType((*PacketCalleeRecv)(nil), "sodibus.PacketCalleeRecv")
+	proto.RegisterType((*PacketCalleeSend)(nil), "sodibus.PacketCalleeSend")
 }
 
 func init() { proto.RegisterFile("client_packet.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 303 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x92, 0x41, 0x4b, 0xc3, 0x30,
-	0x14, 0x80, 0x69, 0x37, 0xa6, 0xcb, 0x64, 0x42, 0x26, 0x52, 0xe6, 0xc1, 0x52, 0x50, 0x7b, 0xea,
-	0xa1, 0xfb, 0x07, 0x16, 0x85, 0x1e, 0x84, 0x11, 0xbd, 0xa8, 0x07, 0xe9, 0x92, 0x87, 0x46, 0xdb,
-	0xa4, 0x24, 0x69, 0xa1, 0xfe, 0x7a, 0x21, 0xad, 0xb1, 0xcc, 0x83, 0xe0, 0x29, 0xbc, 0xbc, 0xf7,
-	0xbe, 0xef, 0x25, 0x3c, 0xb4, 0xa2, 0x25, 0x07, 0x61, 0x5e, 0xea, 0x82, 0x7e, 0x80, 0x49, 0x6a,
-	0x25, 0x8d, 0xc4, 0x07, 0x5a, 0x32, 0xbe, 0x6b, 0xf4, 0xfa, 0x48, 0xbf, 0x15, 0x0a, 0x58, 0x7f,
-	0x1d, 0x3d, 0xa3, 0x93, 0xad, 0x2d, 0xcb, 0x05, 0x37, 0xbc, 0x28, 0xf9, 0x67, 0x61, 0xb8, 0x14,
-	0xf8, 0x0a, 0x4d, 0x4d, 0x57, 0x43, 0xe0, 0x85, 0x5e, 0xbc, 0x4c, 0x57, 0xc9, 0xd0, 0x9d, 0x64,
-	0x16, 0xfd, 0xd0, 0xd5, 0x40, 0x6c, 0x01, 0x5e, 0xa3, 0xc3, 0x5a, 0xc9, 0x96, 0x33, 0xd0, 0x81,
-	0x1f, 0x4e, 0xe2, 0x39, 0x71, 0x71, 0xf4, 0x88, 0x70, 0x0f, 0xdf, 0x2a, 0xc9, 0x1a, 0x0a, 0xea,
-	0x1e, 0x04, 0xc3, 0x4b, 0xe4, 0x73, 0x66, 0xc1, 0x53, 0xe2, 0x73, 0x86, 0x37, 0x08, 0x71, 0xd1,
-	0x4a, 0x6a, 0xc5, 0x81, 0x1f, 0x7a, 0xf1, 0x62, 0x24, 0xcc, 0x5d, 0x8a, 0x8c, 0xca, 0x22, 0xb6,
-	0x8f, 0x26, 0x40, 0xdb, 0x5f, 0xe8, 0x4b, 0x34, 0xa5, 0x92, 0x81, 0x85, 0x2e, 0x53, 0xec, 0xa0,
-	0x37, 0x4a, 0x49, 0x95, 0x49, 0x06, 0xc4, 0xe6, 0xf1, 0x29, 0x9a, 0x29, 0xd0, 0x4d, 0x69, 0x82,
-	0x49, 0xe8, 0xc5, 0x73, 0x32, 0x44, 0xd1, 0xfb, 0xb7, 0x25, 0x93, 0x42, 0x37, 0xd5, 0x60, 0x39,
-	0x77, 0x96, 0x45, 0x7a, 0xec, 0x98, 0xb7, 0x4d, 0x59, 0xe6, 0xec, 0xff, 0x2f, 0xba, 0xdb, 0x77,
-	0xd9, 0xcf, 0xfa, 0xd3, 0xf5, 0x33, 0xba, 0x3f, 0x1e, 0xfd, 0xfa, 0x02, 0x9d, 0xe9, 0x4e, 0x1b,
-	0xa8, 0x74, 0x52, 0x15, 0xaf, 0xdc, 0xb5, 0xf6, 0x4b, 0xf1, 0x34, 0xeb, 0xcf, 0xdd, 0xcc, 0xae,
-	0xc1, 0xe6, 0x2b, 0x00, 0x00, 0xff, 0xff, 0xdd, 0xda, 0xa0, 0xc6, 0x34, 0x02, 0x00, 0x00,
+	// 332 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x92, 0xcf, 0x6b, 0xc2, 0x30,
+	0x14, 0xc7, 0xb1, 0x96, 0xaa, 0xcf, 0x21, 0x23, 0xee, 0x47, 0xd1, 0x8b, 0x14, 0xdc, 0x3c, 0xf5,
+	0xa0, 0xff, 0xc1, 0x64, 0x87, 0x1e, 0x06, 0x5b, 0x76, 0x18, 0x6c, 0x07, 0x89, 0x7d, 0x8f, 0x2d,
+	0xac, 0x26, 0x92, 0x44, 0xc1, 0xfd, 0xf5, 0xc3, 0x54, 0x3a, 0xcb, 0x76, 0x90, 0x9d, 0xca, 0xcb,
+	0x7b, 0xfd, 0x7c, 0xdf, 0x27, 0x04, 0xfa, 0x79, 0x21, 0x49, 0xb9, 0xc5, 0x5a, 0xe4, 0x9f, 0xe4,
+	0xd2, 0xb5, 0xd1, 0x4e, 0xb3, 0x96, 0xd5, 0x28, 0x97, 0x1b, 0x3b, 0x38, 0xb3, 0x1f, 0xc2, 0x10,
+	0x96, 0xc7, 0xc9, 0x1b, 0x5c, 0x3c, 0xfa, 0xb1, 0x4c, 0x49, 0x27, 0x45, 0x21, 0xbf, 0x84, 0x93,
+	0x5a, 0xb1, 0x5b, 0x08, 0x57, 0x1a, 0x29, 0x6e, 0x8c, 0x1a, 0x93, 0xde, 0xb4, 0x9f, 0x1e, 0xfe,
+	0x4e, 0xe7, 0x1e, 0xfd, 0xa0, 0x91, 0xb8, 0x1f, 0x60, 0x03, 0x68, 0xaf, 0x8d, 0xde, 0x4a, 0x24,
+	0x1b, 0x07, 0xa3, 0xe6, 0xa4, 0xc3, 0xab, 0x3a, 0x29, 0xa0, 0x5b, 0xc2, 0x39, 0x09, 0xdc, 0x9d,
+	0xce, 0xbc, 0x86, 0x96, 0xd2, 0x48, 0x0b, 0x89, 0x71, 0x30, 0x6a, 0x4c, 0x42, 0x1e, 0xed, 0xcb,
+	0x0c, 0xd9, 0x10, 0x3a, 0x07, 0x37, 0x89, 0x71, 0xd3, 0xb7, 0xda, 0xe5, 0x41, 0x86, 0xc9, 0x0b,
+	0x9c, 0x97, 0x69, 0x73, 0x51, 0x14, 0x64, 0x9e, 0x49, 0x21, 0xeb, 0x41, 0x20, 0xd1, 0x07, 0x86,
+	0x3c, 0x90, 0xc8, 0x66, 0x00, 0x52, 0x6d, 0x75, 0xee, 0x25, 0x3d, 0xbc, 0x7b, 0xb4, 0x48, 0x56,
+	0xb5, 0xf8, 0xd1, 0x58, 0xb2, 0xac, 0x83, 0x39, 0xe5, 0xdb, 0x5f, 0xe0, 0x1b, 0x08, 0xf3, 0xbd,
+	0x5b, 0xe0, 0xdd, 0x58, 0x85, 0xbc, 0x37, 0x46, 0x9b, 0xb9, 0x57, 0xdb, 0xf7, 0xd9, 0x15, 0x44,
+	0x86, 0xec, 0xa6, 0x70, 0x7e, 0xfd, 0x0e, 0x3f, 0x54, 0x89, 0xaa, 0x65, 0x90, 0xcf, 0x18, 0x57,
+	0x19, 0xdd, 0xe9, 0xe5, 0x1f, 0x4b, 0x66, 0xf8, 0x7f, 0xa7, 0xa7, 0x7a, 0x9e, 0xbf, 0xac, 0x13,
+	0xf3, 0x7e, 0x14, 0x82, 0x63, 0x85, 0xbb, 0x31, 0x0c, 0xed, 0xce, 0x3a, 0x5a, 0xd9, 0x74, 0x25,
+	0xde, 0x65, 0x05, 0x28, 0x9f, 0xe1, 0x6b, 0x54, 0x7e, 0x97, 0x91, 0x7f, 0x78, 0xb3, 0xef, 0x00,
+	0x00, 0x00, 0xff, 0xff, 0xbd, 0x76, 0xba, 0x73, 0xa6, 0x02, 0x00, 0x00,
 }
