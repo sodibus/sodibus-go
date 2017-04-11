@@ -17,5 +17,6 @@ func main() {
 		return "UNKNOWN"
 	}
 	if err != nil { return }
+	for {}
 }
 

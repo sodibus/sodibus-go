@@ -1,7 +1,7 @@
 package sodigo;
 
 import "net"
-import "fmt"
+import "log"
 import "errors"
 import "sync/atomic"
 
@@ -26,9 +26,8 @@ type Client struct {
 	// conn
 	conn *net.TCPConn
 	// channels
-	recvChan chan *packet.Frame
 	sendChan chan *packet.Frame
-	stopChan chan chan bool
+	stopChan chan bool
 	// pending resultChans
 	resultChans map[uint64]*ResultChan
 	// state
@@ -59,9 +58,9 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	c := &Client{
 		IsCallee: mode == packet.ClientMode_CALLEE,
 		Provides: provides,
-		recvChan: make(chan *packet.Frame, 128),
 		sendChan: make(chan *packet.Frame, 128),
-		stopChan: make(chan chan bool),
+		stopChan: make(chan bool),
+		resultChans: make(map[uint64]*ResultChan),
 	}
 
 	// dial TCP
@@ -81,6 +80,7 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 
 	// read ready packet
 	f, err = packet.ReadFrame(c.conn)
+	if err != nil { return nil, err }
 
 	var m proto.Message
 
@@ -90,10 +90,10 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	pr, _ := m.(*packet.PacketReady)
 	if pr == nil  { return nil, errors.New("Bad Initialization Response") }
 
-	fmt.Printf("Connection Ready: As %p of %p", pr.ClientId, pr.NodeId)
+	log.Println("Connection Ready: client_id =", pr.ClientId, "node_id =", pr.NodeId)
 
 	go c.recvLoop()		// recvLoop, turns net.Conn#Read to chan
-	go c.handleLoop()	// handleLoop
+	go c.sendLoop()	// sendLoop
 
 	c.IsConnected = true
 
@@ -115,6 +115,8 @@ func (c *Client) Invoke(name string, method string, arguments []string) (string,
 
 	// Generate a new Id
 	seqId := atomic.AddUint64(&c.SeqId, 1)
+
+	log.Println("Will Invoke", seqId, ":", name, method, arguments)
 
 	// Create a waitChan
 	resultChan := make(ResultChan)
@@ -144,6 +146,8 @@ func (c *Client) Invoke(name string, method string, arguments []string) (string,
 		return "", errors.New("Client Closed")
 	}
 
+	log.Println("Did Recive", seqId, ":", r.Result)
+
 	return r.Result, nil
 }
 
@@ -153,45 +157,41 @@ func (c *Client) Close() {
 		c.IsConnected = false
 
 		// send stop signal and wait done
-		ch := make(chan bool)
-		c.stopChan <- ch
-		<- ch
+		c.stopChan <- true
 	}
 }
 
 // Internal Loop
 
 func (c *Client) recvLoop() {
+	defer func() {
+		c.Close()
+	}()
 	for {
 		// keep reading frames
 		f, err := packet.ReadFrame(c.conn)
 		if err == nil {
-			c.recvChan <- f
+			go c.handleFrame(f)
 		} else {
 			// Ignore UnsynchronizedError
 			_, ok := err.(packet.UnsynchronizedError)
-			if ok { continue } 
-			// otherwise close client and end loop
-			c.Close()
-			break
+			if ok { 
+				continue 
+			} else {
+				break
+			}
 		}
 	}
 }
 
-func (c *Client) handleLoop() {
+func (c *Client) sendLoop() {
 	select {
-		// if packet.Frame received, handle it
-		case f := <- c.recvChan: {
-			go c.handleFrame(f)
-		}
 		// if new frame to send, send it
 		case f := <- c.sendChan: {
 			f.Write(c.conn)
 		}
 		// if stop signal received, close the connection and end loop
-		case ch := <- c.stopChan: {
-			c.conn.Close()
-			ch <- true
+		case _ = <- c.stopChan: {
 			break
 		}
 	}
