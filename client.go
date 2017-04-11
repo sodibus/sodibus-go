@@ -3,6 +3,7 @@ package sodigo;
 import "net"
 import "log"
 import "errors"
+import "sync"
 import "sync/atomic"
 
 import "github.com/sodibus/packet"
@@ -25,9 +26,7 @@ type Client struct {
 	Provides []string
 	// conn
 	conn *net.TCPConn
-	// channels
-	sendChan chan *packet.Frame
-	stopChan chan bool
+	sendLock *sync.Mutex
 	// pending resultChans
 	resultChans map[uint64]*ResultChan
 	// state
@@ -58,8 +57,7 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	c := &Client{
 		IsCallee: mode == packet.ClientMode_CALLEE,
 		Provides: provides,
-		sendChan: make(chan *packet.Frame, 128),
-		stopChan: make(chan bool),
+		sendLock: &sync.Mutex{},
 		resultChans: make(map[uint64]*ResultChan),
 	}
 
@@ -78,6 +76,8 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	err = f.Write(c.conn)
 	if err != nil { return nil, err }
 
+	log.Println("Handshake Sent")
+
 	// read ready packet
 	f, err = packet.ReadFrame(c.conn)
 	if err != nil { return nil, err }
@@ -93,7 +93,6 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	log.Println("Connection Ready: client_id =", pr.ClientId, "node_id =", pr.NodeId)
 
 	go c.recvLoop()		// recvLoop, turns net.Conn#Read to chan
-	go c.sendLoop()	// sendLoop
 
 	c.IsConnected = true
 
@@ -137,7 +136,7 @@ func (c *Client) Invoke(name string, method string, arguments []string) (string,
 	if err != nil { return "", err }
 
 	// Send Chan
-	c.sendChan <- f
+	f.Write(c.conn)
 
 	// Wait for invocation
 	r := <- resultChan
@@ -155,9 +154,7 @@ func (c *Client) Close() {
 	if c.IsConnected {
 		// clear isConnected flag
 		c.IsConnected = false
-
-		// send stop signal and wait done
-		c.stopChan <- true
+		c.conn.Close()
 	}
 }
 
@@ -184,19 +181,6 @@ func (c *Client) recvLoop() {
 	}
 }
 
-func (c *Client) sendLoop() {
-	select {
-		// if new frame to send, send it
-		case f := <- c.sendChan: {
-			f.Write(c.conn)
-		}
-		// if stop signal received, close the connection and end loop
-		case _ = <- c.stopChan: {
-			break
-		}
-	}
-}
-
 func (c *Client) handleFrame(f *packet.Frame) {
 	// Parse Packet
 	m, err := f.Parse()
@@ -216,16 +200,14 @@ func (c *Client) handleFrame(f *packet.Frame) {
 		})
 		if err != nil { return }
 		// send response
-		c.sendChan <- rp
+		rp.Write(c.conn)
 	} else {
 		p, ok := m.(*packet.PacketCallerRecv)
 		if !ok { return }
 		// find cached invocation context
 		ch := c.resultChans[p.Id]
 		// notify waiting chan
-		if ch != nil {
-			*ch <- p
-		}
+		if ch != nil { *ch <- p }
 		// delete invocation context
 		delete(c.resultChans, p.Id)
 	}
