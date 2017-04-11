@@ -1,3 +1,0 @@
-[submodule "resources/protobuf-definitions"]
-	path = resources/protobuf-definitions
-	url = https://github.com/sodibus/protobuf-definitions.git

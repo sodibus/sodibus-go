@@ -4,14 +4,13 @@ import "net"
 import "fmt"
 import "errors"
 import "sync/atomic"
-import "encoding/binary"
 
-import "github.com/sodibus/sodigo/packet"
+import "github.com/sodibus/packet"
 import "github.com/golang/protobuf/proto"
 
 // PacketCallerRecv channel
 
-type InvocationResultChan chan *packet.PacketCallerRecv
+type ResultChan chan *packet.PacketCallerRecv
 
 // Client structure
 
@@ -25,11 +24,11 @@ type Client struct {
 	// conn
 	conn *net.TCPConn
 	// channels
-	recvChan chan *Frame
-	sendChan chan *Frame
+	recvChan chan *packet.Frame
+	sendChan chan *packet.Frame
 	stopChan chan chan bool
-	// pending invocations
-	invocations map[uint64]*InvocationResultChan
+	// pending resultChans
+	resultChans map[uint64]*ResultChan
 	// state
 	isConnected bool
 }
@@ -56,8 +55,8 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	c := &Client{
 		mode: mode,
 		provides: provides,
-		recvChan: make(chan *Frame, 128),
-		sendChan: make(chan *Frame, 128),
+		recvChan: make(chan *packet.Frame, 128),
+		sendChan: make(chan *packet.Frame, 128),
 		stopChan: make(chan chan bool),
 	}
 
@@ -66,24 +65,26 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	if err != nil { return nil, err }
 
 	// write init packet
-	err = c.writePacket(0x01, &packet.PacketInitialization{
+	var f *packet.Frame
+	f, err = packet.NewFrameWithPacket(&packet.PacketHandshake{
 		Mode: c.mode,
 		Provides: c.provides,
 	})
 	if err != nil { return nil, err }
 
-	// read ready packet
-	var f *Frame
-	f, err = c.readFrame()
-
-	if f.Type != 0x02 {
-		return nil, errors.New("Bad Initialization Response")
-	}
-
-	// parse ready packet
-	pr := packet.PacketReady{}
-	err = proto.Unmarshal(f.Data, &pr)
+	err = f.Write(c.conn)
 	if err != nil { return nil, err }
+
+	// read ready packet
+	f, err = packet.ReadFrame(c.conn)
+
+	var m proto.Message
+
+	m, err = f.Parse()
+	if err != nil { return nil, err }
+
+	pr, _ := m.(*packet.PacketReady)
+	if pr == nil  { return nil, errors.New("Bad Initialization Response") }
 
 	fmt.Printf("Connection Ready: As %p of %p", pr.ClientId, pr.NodeId)
 
@@ -98,37 +99,47 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 // Public Method
 
 func (c *Client) Invoke(name string, arguments []string) (string, error) {
+	// return if closed
+	if (!c.isConnected) {
+		return "", errors.New("Client Closed")
+	}
+
 	// Generate a new Id
 	seqId := atomic.AddUint64(&c.seqId, 1)
 
 	// Create a waitChan
-	waitChan := make(InvocationResultChan)
+	resultChan := make(ResultChan)
 
-	// Create a Context and save to invocations
-	c.invocations[seqId] = &waitChan
+	// Create a Context and save to resultChans
+	c.resultChans[seqId] = &resultChan
 
-	// Send
-	ps := packet.PacketCallerSend{
+	// Build frame
+	f, err := packet.NewFrameWithPacket(&packet.PacketCallerSend{
 		Id: seqId,
 		Invocation: &packet.Invocation{
 			CalleeName: name,
 			Arguments: arguments,
 			NoReturn: false,
 		},
-	}
-
-	f, err := NewFrameWithPacket(0x03, &ps)
+	})
 	if err != nil { return "", err }
 
+	// Send Chan
 	c.sendChan <- f
-	// Wait for invocation
-	p := <- waitChan
 
-	return p.Result, nil
+	// Wait for invocation
+	r := <- resultChan
+
+	if r == nil {
+		return "", errors.New("Client Closed")
+	}
+
+	return r.Result, nil
 }
 
 func (c *Client) Close() {
 	if c.isConnected {
+		// clear isConnected flag
 		c.isConnected = false
 
 		// send stop signal and wait done
@@ -142,18 +153,15 @@ func (c *Client) Close() {
 
 func (c *Client) recvLoop() {
 	for {
-		f, err := c.readFrame()
+		// keep reading frames
+		f, err := packet.ReadFrame(c.conn)
 		if err == nil {
 			c.recvChan <- f
 		} else {
-			sdError, ok := err.(SdError)
-			// ignore Frame Unsynchronized Error
-			if ok {
-				if sdError.Code == ERR_FrameUnsynchronized {
-					continue
-				}
-			} 
-			// close client and end loop
+			// Ignore UnsynchronizedError
+			_, ok := err.(packet.UnsynchronizedError)
+			if ok { continue } 
+			// otherwise close client and end loop
 			c.Close()
 			break
 		}
@@ -162,13 +170,13 @@ func (c *Client) recvLoop() {
 
 func (c *Client) handleLoop() {
 	select {
-		// if Frame received, handle it
+		// if packet.Frame received, handle it
 		case f := <- c.recvChan: {
-			go c.handleFrame(f)
+			c.handleFrame(f)
 		}
 		// if new frame to send, send it
 		case f := <- c.sendChan: {
-			go f.Write(c.conn)
+			f.Write(c.conn)
 		}
 		// if stop signal received, close the connection and end loop
 		case ch := <- c.stopChan: {
@@ -179,55 +187,20 @@ func (c *Client) handleLoop() {
 	}
 }
 
-func (c *Client) handleFrame(f *Frame) {
-	if f.Type == 0x04 {
-		p := packet.PacketCallerRecv{}
-		proto.Unmarshal(f.Data, &p)
+func (c *Client) handleFrame(f *packet.Frame) {
+	// Parse Packet and try to cast to PacketCallerRecv
+	m, err := f.Parse()
+	if err != nil { return }
+	p, ok := m.(*packet.PacketCallerRecv)
+	if !ok { return }
 
-		if p.Id > 0 {
-			ch := c.invocations[p.Id]
-			if ch != nil {
-				*ch <- &p
-			}
-			delete(c.invocations, p.Id)
-		}
-	}
-}
-
-// I/O
-
-func (c *Client) writePacket(t uint8, m proto.Message) error {
-	f, err := NewFrameWithPacket(t, m)
-	if err != nil { return err }
-	return f.Write(c.conn)
-}
-
-func (c *Client) readFrame() (*Frame, error) {
-	var err error
-	var head = make([]uint8, 1)
-	var dataLen = make([]uint8, 4)
-
-	// seek head (1 byte)
-	_, err = c.conn.Read(head)
-	if err != nil { return nil, err }
-	if head[0] != 0xAA {
-		return nil, NewSdError(ERR_FrameUnsynchronized)
+	// find cached invocation context
+	ch := c.resultChans[p.Id]
+	// notify waiting chan
+	if ch != nil {
+		*ch <- p
 	}
 
-	// read packet type (1 byte)
-	_, err = c.conn.Read(head)
-	if err != nil { return nil, err }
-
-	// read dataLen (4 byte, uint32)
-	_, err = c.conn.Read(dataLen)
-	if err != nil { return nil, err }
-	len := binary.BigEndian.Uint32(dataLen)
-
-	// read data
-	var data = make([]byte, len)
-	_, err = c.conn.Read(data)
-	if err != nil { return nil, err }
-
-	// build frame
-	return &Frame{ Type: head[0], Data: data }, err
+	// delete invocation context
+	delete(c.resultChans, p.Id)
 }
