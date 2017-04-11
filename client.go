@@ -12,15 +12,17 @@ import "github.com/golang/protobuf/proto"
 
 type ResultChan chan *packet.PacketCallerRecv
 
+type CalleeHandler func (service string, method string, arguments []string) string
+
 // Client structure
 
 type Client struct {
 	// sequence id, client-local unique for each Invocation
-	seqId uint64
+	SeqId uint64
 	// client mode, either be Caller or Callee
-	mode packet.ClientMode
+	IsCallee bool
 	// callee names
-	provides []string
+	Provides []string
 	// conn
 	conn *net.TCPConn
 	// channels
@@ -30,7 +32,9 @@ type Client struct {
 	// pending resultChans
 	resultChans map[uint64]*ResultChan
 	// state
-	isConnected bool
+	IsConnected bool
+	// callee
+	Handler CalleeHandler
 }
 
 // Create a Client
@@ -53,8 +57,8 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 
 	// initialize object
 	c := &Client{
-		mode: mode,
-		provides: provides,
+		IsCallee: mode == packet.ClientMode_CALLEE,
+		Provides: provides,
 		recvChan: make(chan *packet.Frame, 128),
 		sendChan: make(chan *packet.Frame, 128),
 		stopChan: make(chan chan bool),
@@ -67,8 +71,8 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	// write init packet
 	var f *packet.Frame
 	f, err = packet.NewFrameWithPacket(&packet.PacketHandshake{
-		Mode: c.mode,
-		Provides: c.provides,
+		Mode: mode,
+		Provides: c.Provides,
 	})
 	if err != nil { return nil, err }
 
@@ -91,21 +95,26 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 	go c.recvLoop()		// recvLoop, turns net.Conn#Read to chan
 	go c.handleLoop()	// handleLoop
 
-	c.isConnected = true
+	c.IsConnected = true
 
 	return c, nil
 }
 
 // Public Method
 
-func (c *Client) Invoke(name string, arguments []string) (string, error) {
+func (c *Client) Invoke(name string, method string, arguments []string) (string, error) {
+	// return if this is a Callee
+	if (c.IsCallee) {
+		return "", errors.New("Client mode is Callee")
+	}
+
 	// return if closed
-	if (!c.isConnected) {
+	if (!c.IsConnected) {
 		return "", errors.New("Client Closed")
 	}
 
 	// Generate a new Id
-	seqId := atomic.AddUint64(&c.seqId, 1)
+	seqId := atomic.AddUint64(&c.SeqId, 1)
 
 	// Create a waitChan
 	resultChan := make(ResultChan)
@@ -118,6 +127,7 @@ func (c *Client) Invoke(name string, arguments []string) (string, error) {
 		Id: seqId,
 		Invocation: &packet.Invocation{
 			CalleeName: name,
+			MethodName: method,
 			Arguments: arguments,
 			NoReturn: false,
 		},
@@ -138,9 +148,9 @@ func (c *Client) Invoke(name string, arguments []string) (string, error) {
 }
 
 func (c *Client) Close() {
-	if c.isConnected {
+	if c.IsConnected {
 		// clear isConnected flag
-		c.isConnected = false
+		c.IsConnected = false
 
 		// send stop signal and wait done
 		ch := make(chan bool)
@@ -172,7 +182,7 @@ func (c *Client) handleLoop() {
 	select {
 		// if packet.Frame received, handle it
 		case f := <- c.recvChan: {
-			c.handleFrame(f)
+			go c.handleFrame(f)
 		}
 		// if new frame to send, send it
 		case f := <- c.sendChan: {
@@ -188,19 +198,35 @@ func (c *Client) handleLoop() {
 }
 
 func (c *Client) handleFrame(f *packet.Frame) {
-	// Parse Packet and try to cast to PacketCallerRecv
+	// Parse Packet
 	m, err := f.Parse()
 	if err != nil { return }
-	p, ok := m.(*packet.PacketCallerRecv)
-	if !ok { return }
 
-	// find cached invocation context
-	ch := c.resultChans[p.Id]
-	// notify waiting chan
-	if ch != nil {
-		*ch <- p
+	// Try handle CallerRecv
+	if c.IsCallee {
+		p, ok := m.(*packet.PacketCalleeRecv)
+		if !ok { return }
+		if c.Handler == nil { return }
+		// invoke handler
+		r := c.Handler(p.Invocation.CalleeName, p.Invocation.MethodName, p.Invocation.Arguments)
+		// build response
+		rp, err := packet.NewFrameWithPacket(&packet.PacketCalleeSend{
+			Id: p.Id,
+			Result: r,
+		})
+		if err != nil { return }
+		// send response
+		c.sendChan <- rp
+	} else {
+		p, ok := m.(*packet.PacketCallerRecv)
+		if !ok { return }
+		// find cached invocation context
+		ch := c.resultChans[p.Id]
+		// notify waiting chan
+		if ch != nil {
+			*ch <- p
+		}
+		// delete invocation context
+		delete(c.resultChans, p.Id)
 	}
-
-	// delete invocation context
-	delete(c.resultChans, p.Id)
 }
