@@ -17,6 +17,7 @@ func main() {
 		return "UNKNOWN"
 	}
 	if err != nil { return }
-	for {}
+	ch := make(chan bool)
+	_ = <- ch
 }
 

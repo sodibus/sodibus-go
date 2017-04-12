@@ -29,6 +29,7 @@ type Client struct {
 	sendLock *sync.Mutex
 	// pending resultChans
 	resultChans map[uint64]*ResultChan
+	resultChansLock *sync.RWMutex
 	// state
 	IsConnected bool
 	// callee
@@ -59,6 +60,7 @@ func Dial(addr string, mode packet.ClientMode, provides []string) (*Client, erro
 		Provides: provides,
 		sendLock: &sync.Mutex{},
 		resultChans: make(map[uint64]*ResultChan),
+		resultChansLock: &sync.RWMutex{},
 	}
 
 	// dial TCP
@@ -121,7 +123,9 @@ func (c *Client) Invoke(name string, method string, arguments []string) (string,
 	resultChan := make(ResultChan)
 
 	// Create a Context and save to resultChans
+	c.resultChansLock.Lock()
 	c.resultChans[seqId] = &resultChan
+	c.resultChansLock.Unlock()
 
 	// Build frame
 	f, err := packet.NewFrameWithPacket(&packet.PacketCallerSend{
@@ -205,10 +209,14 @@ func (c *Client) handleFrame(f *packet.Frame) {
 		p, ok := m.(*packet.PacketCallerRecv)
 		if !ok { return }
 		// find cached invocation context
+		c.resultChansLock.RLock()
 		ch := c.resultChans[p.Id]
 		// notify waiting chan
 		if ch != nil { *ch <- p }
+		c.resultChansLock.RUnlock()
 		// delete invocation context
+		c.resultChansLock.Lock()
 		delete(c.resultChans, p.Id)
+		c.resultChansLock.Unlock()
 	}
 }
