@@ -17,7 +17,7 @@ type ConnDelegate interface {
 //
 // Conn use delegate mechanism
 type Conn struct {
-	addr string
+	addr     string
 	currConn *net.TCPConn
 	sendChan chan *packet.Frame
 	delegate ConnDelegate
@@ -27,7 +27,7 @@ type Conn struct {
 func NewConn(addr string, delegate ConnDelegate) *Conn {
 	return &Conn{
 		sendChan: make(chan *packet.Frame, 16),
-		addr: addr,
+		addr:     addr,
 		delegate: delegate,
 	}
 }
@@ -41,7 +41,9 @@ func (c *Conn) Close() {
 	c.isClosed = true
 	// close underlaying if needed
 	cn := c.currConn
-	if cn != nil { cn.Close() }
+	if cn != nil {
+		cn.Close()
+	}
 }
 
 func (c *Conn) Run() {
@@ -51,10 +53,12 @@ func (c *Conn) Run() {
 		log.Println("Conn disconnected", err)
 
 		// if this client is closed quit
-		if c.isClosed { break }
+		if c.isClosed {
+			break
+		}
 
 		// sleep 3 second and loop
-		log.Println("Reconnect after 3s", err)
+		log.Println("Reconnect after 3s")
 		time.Sleep(3 * time.Second)
 	}
 }
@@ -63,11 +67,15 @@ func (c *Conn) Run() {
 func (c *Conn) runSingle() error {
 	// resolve
 	tcpAddr, err := net.ResolveTCPAddr("tcp", c.addr)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	// connect
 	cn, err := net.DialTCP("tcp", nil, tcpAddr)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	// set c.currConn
 	c.currConn = cn
@@ -85,31 +93,39 @@ func (c *Conn) runSingle() error {
 	f, err := packet.NewFrameWithPacket(p)
 
 	err = f.Write(cn)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	f, err = packet.ReadFrame(cn)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	m, err := f.Parse()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	r, ok := m.(*packet.PacketReady)
-	if !ok { return errors.New("Failed to Handshake") }
+	if !ok {
+		return errors.New("Failed to Handshake")
+	}
 
 	// delegate out ready packet
 	c.delegate.ConnDidReceiveReady(c, r)
 
 	// make the close/done chan
 	close := make(chan bool, 1)
-	done 	:= make(chan bool, 1)
+	done := make(chan bool, 1)
 
 	// defer to wait sendLoop done
 	defer func() {
 		// send close signal
 		close <- true
 		// wait sendLoop done
-		<- done
-	} ()
+		<-done
+	}()
 
 	// send loop
 	go c.sendLoop(cn, close, done)
@@ -121,7 +137,9 @@ func (c *Conn) runSingle() error {
 
 		if err != nil {
 			_, ok := err.(packet.UnsynchronizedError)
-			if !ok { break }
+			if !ok {
+				break
+			}
 		} else {
 			c.delegate.ConnDidReceiveFrame(c, f)
 		}
@@ -134,11 +152,12 @@ func (c *Conn) runSingle() error {
 //
 // accept a close signal, send to done when finished
 func (c *Conn) sendLoop(cn *net.TCPConn, close chan bool, done chan bool) {
-	OUTER:
+OUTER:
 	for {
 		select {
-			// handle frames
-			case f := <- c.sendChan: {
+		// handle frames
+		case f := <-c.sendChan:
+			{
 				// write frame
 				err := f.Write(cn)
 				// if failed to write
@@ -151,8 +170,9 @@ func (c *Conn) sendLoop(cn *net.TCPConn, close chan bool, done chan bool) {
 					break OUTER
 				}
 			}
-			// handle close signal
-			case <- close: {
+		// handle close signal
+		case <-close:
+			{
 				// break the for-loop
 				break OUTER
 			}

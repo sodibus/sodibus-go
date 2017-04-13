@@ -10,15 +10,15 @@ import "github.com/sodibus/packet"
 type ResultChan chan *packet.PacketCallerRecv
 
 type CallerClient struct {
-	seqId uint64
-	resultChans map[uint64]ResultChan
+	seqId           uint64
+	resultChans     map[uint64]ResultChan
 	resultChansLock *sync.RWMutex
-	conn *Conn
+	conn            *Conn
 }
 
 func NewCaller(addr string) *CallerClient {
 	cl := &CallerClient{
-		resultChans: make(map[uint64]ResultChan),
+		resultChans:     make(map[uint64]ResultChan),
 		resultChansLock: &sync.RWMutex{},
 	}
 	cl.conn = NewConn(addr, cl)
@@ -36,12 +36,12 @@ func (cl *CallerClient) Invoke(calleeName string, methodName string, arguments [
 	cl.resultChans[id] = ch
 	cl.resultChansLock.Unlock()
 
-	defer func(){
+	defer func() {
 		// del resultChan
 		cl.resultChansLock.Lock()
 		delete(cl.resultChans, id)
 		cl.resultChansLock.Unlock()
-	} ()
+	}()
 
 	// send packet
 	f, err := packet.NewFrameWithPacket(&packet.PacketCallerSend{
@@ -49,11 +49,13 @@ func (cl *CallerClient) Invoke(calleeName string, methodName string, arguments [
 		Invocation: &packet.Invocation{
 			CalleeName: calleeName,
 			MethodName: methodName,
-			Arguments: arguments,
-			NoReturn: false,
+			Arguments:  arguments,
+			NoReturn:   false,
 		},
 	})
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 
 	cl.conn.Send(f)
 
@@ -61,8 +63,12 @@ func (cl *CallerClient) Invoke(calleeName string, methodName string, arguments [
 	var r *packet.PacketCallerRecv
 
 	select {
-		case r = <- ch: { }
-		case <- time.After(10 * time.Second): { }
+	case r = <-ch:
+		{
+		}
+	case <-time.After(10 * time.Second):
+		{
+		}
 	}
 
 	if r == nil {
@@ -86,14 +92,20 @@ func (cl *CallerClient) ConnDidReceiveReady(c *Conn, p *packet.PacketReady) {
 
 func (cl *CallerClient) ConnDidReceiveFrame(c *Conn, f *packet.Frame) {
 	m, err := f.Parse()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	r, ok := m.(*packet.PacketCallerRecv)
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	cl.resultChansLock.RLock()
 	defer cl.resultChansLock.RUnlock()
 
 	ch := cl.resultChans[r.Id]
-	if ch != nil { ch <- r }
+	if ch != nil {
+		ch <- r
+	}
 }
