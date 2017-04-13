@@ -4,7 +4,8 @@ import "strconv"
 import "github.com/sodibus/sodigo"
 
 func main() {
-	c, err := sodigo.DialAsCallee("127.0.0.1:7788", []string { "calculator" })
+	var err error
+	c := sodigo.NewCallee("127.0.0.1:7788", []string { "calculator" })
 	c.Handler = func(service string, method string, arguments []string) string {
 		switch method {
 			case "multiply": {
@@ -20,4 +21,3 @@ func main() {
 	ch := make(chan bool)
 	_ = <- ch
 }
-
