@@ -10,7 +10,7 @@ import "github.com/sodibus/packet"
 type ConnDelegate interface {
 	ConnPrepareHandshake(c *Conn) *packet.PacketHandshake
 	ConnDidReceiveReady(c *Conn, p *packet.PacketReady)
-	ConnDidReceiveFrame(c *Conn, f *packet.Frame)
+	ConnDidReceivePacket(c *Conn, m packet.Packet)
 }
 
 // Conn is a resumable net.TCPConn wrapper
@@ -138,16 +138,17 @@ func (c *Conn) runSingle() error {
 
 	// recv loop
 	for {
-		var f *packet.Frame
-		f, err = packet.ReadFrame(cn)
+		var m packet.Packet
+		m, err = packet.ReadAndParse(cn)
 
 		if err != nil {
+			// errors except UnsynchronizedError are unsupported
 			_, ok := err.(packet.UnsynchronizedError)
 			if !ok {
 				break
 			}
 		} else {
-			c.delegate.ConnDidReceiveFrame(c, f)
+			c.delegate.ConnDidReceivePacket(c, m)
 		}
 	}
 

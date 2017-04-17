@@ -30,7 +30,7 @@ func main() {
 
 		dt := time.Now().UnixNano() - now
 
-		log.Printf("%d Calculate Result: %s * %s = %s\n", dt, "2", "4", r)
+		log.Printf("%d Calculate Result: %s * %s = %s\n", dt, v1, v2, r)
 
 		t = t + uint64(dt)
 		i = i + 1

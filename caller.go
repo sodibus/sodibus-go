@@ -93,13 +93,8 @@ func (cl *CallerClient) ConnDidReceiveReady(c *Conn, p *packet.PacketReady) {
 	log.Println("Caller Ready node =", p.NodeId, ", client_id=", p.ClientId)
 }
 
-// ConnDidReceiveFrame implements delegate logic
-func (cl *CallerClient) ConnDidReceiveFrame(c *Conn, f *packet.Frame) {
-	m, err := f.Parse()
-	if err != nil {
-		return
-	}
-
+// ConnDidReceivePacket implements delegate logic
+func (cl *CallerClient) ConnDidReceivePacket(c *Conn, m packet.Packet) {
 	r, ok := m.(*packet.PacketCallerRecv)
 	if !ok {
 		return
