@@ -6,7 +6,7 @@ import "time"
 import "errors"
 import "github.com/sodibus/packet"
 
-// Delegate for Conn
+// ConnDelegate delegate type for Conn
 type ConnDelegate interface {
 	ConnPrepareHandshake(c *Conn) *packet.PacketHandshake
 	ConnDidReceiveReady(c *Conn, p *packet.PacketReady)
@@ -24,6 +24,7 @@ type Conn struct {
 	isClosed bool
 }
 
+// NewConn create a new Conn
 func NewConn(addr string, delegate ConnDelegate) *Conn {
 	return &Conn{
 		sendChan: make(chan *packet.Frame, 16),
@@ -32,10 +33,12 @@ func NewConn(addr string, delegate ConnDelegate) *Conn {
 	}
 }
 
+// Send send a frame
 func (c *Conn) Send(f *packet.Frame) {
 	c.sendChan <- f
 }
 
+// Close close a Conn
 func (c *Conn) Close() {
 	// mark as closed
 	c.isClosed = true
@@ -46,6 +49,7 @@ func (c *Conn) Close() {
 	}
 }
 
+// Run main loop for this tcp
 func (c *Conn) Run() {
 	for {
 		// run a single connection
@@ -89,8 +93,10 @@ func (c *Conn) runSingle() error {
 	}()
 
 	// handshake
-	p := c.delegate.ConnPrepareHandshake(c)
-	f, err := packet.NewFrameWithPacket(p)
+	f, err := packet.NewFrameWithPacket(c.delegate.ConnPrepareHandshake(c))
+	if err != nil {
+		return err
+	}
 
 	err = f.Write(cn)
 	if err != nil {

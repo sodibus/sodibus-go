@@ -7,15 +7,18 @@ import "errors"
 import "sync/atomic"
 import "github.com/sodibus/packet"
 
+// ResultChan chan for PacketCallerRecv
 type ResultChan chan *packet.PacketCallerRecv
 
+// CallerClient represents caller client
 type CallerClient struct {
-	seqId           uint64
+	seqID           uint64
 	resultChans     map[uint64]ResultChan
 	resultChansLock *sync.RWMutex
 	conn            *Conn
 }
 
+// NewCaller create a new caller
 func NewCaller(addr string) *CallerClient {
 	cl := &CallerClient{
 		resultChans:     make(map[uint64]ResultChan),
@@ -26,8 +29,9 @@ func NewCaller(addr string) *CallerClient {
 	return cl
 }
 
+// Invoke invoke a service
 func (cl *CallerClient) Invoke(calleeName string, methodName string, arguments []string) (string, error) {
-	id := atomic.AddUint64(&cl.seqId, 1)
+	id := atomic.AddUint64(&cl.seqID, 1)
 
 	ch := make(ResultChan, 1)
 
@@ -73,23 +77,23 @@ func (cl *CallerClient) Invoke(calleeName string, methodName string, arguments [
 
 	if r == nil {
 		return "", errors.New("Invocation Timeout")
-	} else {
-		return r.Result, nil
 	}
+	return r.Result, nil
 }
 
-// Delegate
-
+// ConnPrepareHandshake implements delegate logic
 func (cl *CallerClient) ConnPrepareHandshake(c *Conn) *packet.PacketHandshake {
 	return &packet.PacketHandshake{
 		Mode: packet.ClientMode_CALLER,
 	}
 }
 
+// ConnDidReceiveReady implements delegate logic
 func (cl *CallerClient) ConnDidReceiveReady(c *Conn, p *packet.PacketReady) {
 	log.Println("Caller Ready node =", p.NodeId, ", client_id=", p.ClientId)
 }
 
+// ConnDidReceiveFrame implements delegate logic
 func (cl *CallerClient) ConnDidReceiveFrame(c *Conn, f *packet.Frame) {
 	m, err := f.Parse()
 	if err != nil {

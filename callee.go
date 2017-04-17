@@ -3,14 +3,17 @@ package sodigo
 import "log"
 import "github.com/sodibus/packet"
 
+// CalleeHandler handler function for Callee
 type CalleeHandler func(calleeName string, methodName string, arguments []string) string
 
+// CalleeClient represents callee client, provides services
 type CalleeClient struct {
 	conn        *Conn
 	calleeNames []string
 	Handler     CalleeHandler
 }
 
+// NewCallee creates a new Callee
 func NewCallee(addr string, calleeNames []string) *CalleeClient {
 	cl := &CalleeClient{
 		calleeNames: calleeNames,
@@ -20,6 +23,7 @@ func NewCallee(addr string, calleeNames []string) *CalleeClient {
 	return cl
 }
 
+// ConnPrepareHandshake implements delegate logic
 func (cl *CalleeClient) ConnPrepareHandshake(c *Conn) *packet.PacketHandshake {
 	return &packet.PacketHandshake{
 		Mode:     packet.ClientMode_CALLEE,
@@ -27,10 +31,12 @@ func (cl *CalleeClient) ConnPrepareHandshake(c *Conn) *packet.PacketHandshake {
 	}
 }
 
+// ConnDidReceiveReady implements delegate logic
 func (cl *CalleeClient) ConnDidReceiveReady(c *Conn, p *packet.PacketReady) {
 	log.Println("Callee Ready node =", p.NodeId, ", client_id =", p.ClientId, ", provides =", cl.calleeNames)
 }
 
+// ConnDidReceiveFrame implements delegate logic
 func (cl *CalleeClient) ConnDidReceiveFrame(c *Conn, f *packet.Frame) {
 	// parse packet
 	m, err := f.Parse()
